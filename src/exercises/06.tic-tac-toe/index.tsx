@@ -1,28 +1,47 @@
-import React, { use, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
+const defaultState = {
+	history: [Array(9).fill(null)],
+	currentStep: 0,
+}
 
-const defaultState = Array(9).fill(null)
+
+type Player = 'X' | 'O'
+type Squares = Array<Player | null>
+type GameState = {
+	history: Array<Squares>
+	currentStep: number
+}
 
 function Board() {
-	const [squares, setSquares] = useState<Squares>(() => {
-		const storedSquares = localStorage.getItem('squares')
+	const [state, setState] = useState<GameState>(() => {
+		const storedSquares = localStorage.getItem('state')
 		try {
 			return storedSquares ? JSON.parse(storedSquares) : defaultState
 		} catch {
 			return defaultState
 		}
 	})
+	const { history, currentStep } = state
+	const squares = history[currentStep]
 	const status = calculateStatus(squares)
 	const nextValue = calculateNextValue(squares)
 
 	useEffect(() => {
-		localStorage.setItem('squares', JSON.stringify(squares))
-	}, [squares])
+		localStorage.setItem('state', JSON.stringify(state))
+	}, [state])
 
 	function handleClick(i: number) {
 		if (squares[i] || calculateWinner(squares)) return
 		const newSquares = squares.slice()
 		newSquares[i] = nextValue
-		setSquares(newSquares)
+
+		const newHistory = history.slice(0, currentStep + 1)
+		newHistory.push(newSquares)
+		setState({
+			history: newHistory,
+			currentStep: newHistory.length - 1,
+		})
 	}
 
 	function renderSquare(i: number) {
@@ -37,7 +56,8 @@ function Board() {
 	}
 
 	function restartGame() {
-		setSquares(defaultState)
+		setState(defaultState)
+		localStorage.removeItem('state')
 	}
 	return (
 		<div className="flex flex-col items-center gap-4">
@@ -61,22 +81,51 @@ function Board() {
 			>
 				Restart
 			</button>
-		</div>
-	)
-}
 
-function App() {
-	return (
-		<div className="min-h-screen flex items-start justify-center bg-gray-50">
-			<div className="p-6 bg-white rounded-lg shadow-md">
-				<Board />
+			<div className='mt-4 flex flex-col'>
+				{history.map((squares, step) => (
+					<button
+						key={step}
+						onClick={() => setState({ ...state, currentStep: step })}
+						className={`px-2 py-1 m-1 rounded ${step === currentStep ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
+					>
+						{step === 0 ? 'Go to game start' : `Go to move #${step}`}
+					</button>
+				))}
 			</div>
 		</div>
 	)
 }
 
-type Player = 'X' | 'O'
-type Squares = Array<Player | null>
+function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+	function handleError() {
+		resetErrorBoundary()
+		localStorage.removeItem('state')
+	}
+	return (
+		<div className="p-4 bg-red-100 text-red-700 rounded">
+			<h2 className="font-bold">Something went wrong:</h2>
+			<p>{error.message}</p>
+			<button
+				onClick={handleError}
+				className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+			>
+				Try again
+			</button>
+		</div>
+	)
+}
+function App() {
+	return (
+		<div className="min-h-screen flex items-start justify-center bg-gray-50">
+			<div className="p-6 bg-white rounded-lg shadow-md">
+				<ErrorBoundary FallbackComponent={ErrorFallback}>
+					<Board />
+				</ErrorBoundary>
+			</div>
+		</div>
+	)
+}
 
 function calculateNextValue(squares: Squares): Player {
 	const xCount = squares.filter(square => square === 'X').length
